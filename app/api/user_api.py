@@ -1,137 +1,255 @@
-<<<<<<< HEAD
-# app/api/user_api.py
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
-router = APIRouter(prefix="/users", tags=["Users"])
+from app.database.database import get_db
+from app.models.user import User
+from app.schemas.user_schema import UserCreate, UserUpdate, PasswordChange, UserResponse
+from app.core.security import hash_password
+from app.core.dependencies import require_permission
+from app.core.permissions import Permission
 
-users = []
 
-from app.schemas.user_schema import User
+router = APIRouter(
+    prefix="/users",
+    tags=["Users"],
+)
 
-@router.get("/")
-def get_users():
-    return users
 
-@router.get("/{id}")
-def get_user(id: int):
-    for user in users:
-        if user.id == id:
-            return user
-    return {"error": f"User {id} not found"}
-
-@router.post("/")
-def create_user(user: User):
-    for existing_user in users:
-        if existing_user.id == user.id:
-            return {"error": f"User with ID {user.id} already exists"}
-    users.append(user)
-    return {"message": "User created successfully", "user": user}
-
-@router.put("/{id}")
-def update_user(id: int, updated_user: User):
-    for index, user in enumerate(users):
-        if user.id == id:
-            users[index] = updated_user
-            return {"message": f"User {id} updated successfully", "user": updated_user}
-    return {"error": f"User {id} not found"}
-
-@router.delete("/{id}")
-def delete_user(id: int):
-    for index, user in enumerate(users):
-        if user.id == id:
-            deleted_user = users.pop(index)
-            return {"message": f"User {id} deleted successfully", "user": deleted_user}
-    return {"error": f"User {id} not found"}
-=======
-from fastapi import APIRouter, HTTPException
-from app.schemas.user_schema import User
-
-router = APIRouter()
-
-# Temporary Storage
-users = []
-
-# -------------------------
+# =========================================================
 # CREATE USER
-# -------------------------
-@router.post("/users")
-def create_user(user: User):
+# Administrator only
+# =========================================================
 
-    # Duplicate ID Check
-    for existing_user in users:
-        if existing_user.id == user.id:
+@router.post(
+    "/",
+    response_model=UserResponse,
+)
+def create_user(
+    user: UserCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(
+        require_permission(Permission.MANAGE_USERS)
+    ),
+):
+    existing_user = (
+        db.query(User)
+        .filter(User.email == user.email)
+        .first()
+    )
+
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered",
+        )
+
+    new_user = User(
+        full_name=user.full_name,
+        email=user.email,
+        role=user.role,
+        is_active=True,
+        hashed_password=hash_password(user.password),
+    )
+
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+
+    return new_user
+
+
+# =========================================================
+# GET ALL USERS
+# Administrator / users with READ_USERS
+# =========================================================
+
+@router.get(
+    "/",
+    response_model=list[UserResponse],
+)
+def get_users(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(
+        require_permission(Permission.READ_USERS)
+    ),
+):
+    return db.query(User).all()
+
+
+# =========================================================
+# GET USER BY ID
+# =========================================================
+
+@router.get(
+    "/{user_id}",
+    response_model=UserResponse,
+)
+def get_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(
+        require_permission(Permission.READ_USERS)
+    ),
+):
+    user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    return user
+
+
+# =========================================================
+# UPDATE USER
+# =========================================================
+
+@router.put(
+    "/{user_id}",
+    response_model=UserResponse,
+)
+def update_user(
+    user_id: int,
+    updated_user: UserUpdate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(
+        require_permission(Permission.UPDATE_USERS)
+    ),
+):
+    user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    # Prevent email collision
+    existing_user = (
+        db.query(User)
+        .filter(
+            User.email == updated_user.email,
+            User.id != user_id,
+        )
+        .first()
+    )
+
+    if existing_user:
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered",
+        )
+
+    user.full_name = updated_user.full_name
+    user.email = updated_user.email
+    user.role = updated_user.role
+    user.is_active = updated_user.is_active
+
+
+    db.commit()
+    db.refresh(user)
+
+    return user
+
+# =========================================================
+# DEACTIVATE USER
+# Administrator / users with DELETE_USERS permission
+# =========================================================
+
+@router.delete(
+    "/{user_id}",
+)
+def delete_user(
+    user_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(
+        require_permission(Permission.DELETE_USERS)
+    ),
+):
+    user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
+    )
+
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
+
+    # Prevent deactivating the last active Administrator
+    if user.role == "Administrator" and user.is_active:
+        active_admin_count = (
+            db.query(User)
+            .filter(
+                User.role == "Administrator",
+                User.is_active.is_(True),
+            )
+            .count()
+        )
+
+        if active_admin_count <= 1:
             raise HTTPException(
                 status_code=400,
-                detail="User ID already exists"
+                detail="Cannot deactivate the last active Administrator",
             )
 
-    users.append(user)
+    user.is_active = False
+
+    db.commit()
+    db.refresh(user)
 
     return {
-        "message": "User created successfully",
-        "user": user
+        "message": "User deactivated successfully",
+        "user_id": user.id,
+        "is_active": user.is_active,
     }
 
+# =========================================================
+# CHANGE USER PASSWORD
+# Users with UPDATE_USERS permission
+# =========================================================
 
-# -------------------------
-# GET ALL USERS
-# -------------------------
-@router.get("/users")
-def get_users():
-    return users
-
-
-# -------------------------
-# GET USER BY ID
-# -------------------------
-@router.get("/users/{user_id}")
-def get_user(user_id: int):
-
-    for user in users:
-        if user.id == user_id:
-            return user
-
-    raise HTTPException(
-        status_code=404,
-        detail="User not found"
+@router.patch(
+    "/{user_id}/password",
+)
+def change_user_password(
+    user_id: int,
+    password_data: PasswordChange,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(
+        require_permission(Permission.UPDATE_USERS)
+    ),
+):
+    user = (
+        db.query(User)
+        .filter(User.id == user_id)
+        .first()
     )
-# -------------------------
-# UPDATE USER
-# -------------------------
-@router.put("/users/{user_id}")
-def update_user(user_id: int, updated_user: User):
 
-    for index, user in enumerate(users):
-        if user.id == user_id:
-            users[index] = updated_user
+    if not user:
+        raise HTTPException(
+            status_code=404,
+            detail="User not found",
+        )
 
-            return {
-                "message": "User updated successfully",
-                "user": updated_user
-            }
-
-    raise HTTPException(
-        status_code=404,
-        detail="User not found"
+    user.hashed_password = hash_password(
+        password_data.password
     )
-# -------------------------
-# DELETE USER
-# -------------------------
-@router.delete("/users/{user_id}")
-def delete_user(user_id: int):
 
-    for index, user in enumerate(users):
-        if user.id == user_id:
+    db.commit()
 
-            deleted_user = users.pop(index)
-
-            return {
-                "message": "User deleted successfully",
-                "user": deleted_user
-            }
-
-    raise HTTPException(
-        status_code=404,
-        detail="User not found"
-    )
->>>>>>> cb87ace116b09ed98d5d64392b80a596edfa80ce
+    return {
+        "message": "Password changed successfully"
+    }

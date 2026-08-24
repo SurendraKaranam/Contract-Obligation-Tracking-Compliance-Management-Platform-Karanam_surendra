@@ -1,18 +1,16 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-<<<<<<< HEAD
-=======
 
->>>>>>> cb87ace116b09ed98d5d64392b80a596edfa80ce
 class Settings(BaseSettings):
     DATABASE_URL: str
+    SECRET_KEY: str
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+         env_file_encoding="utf-8",
+        extra="ignore"
+    )
 
-<<<<<<< HEAD
+
 settings = Settings()
-=======
-
-settings = Settings()
->>>>>>> cb87ace116b09ed98d5d64392b80a596edfa80ce

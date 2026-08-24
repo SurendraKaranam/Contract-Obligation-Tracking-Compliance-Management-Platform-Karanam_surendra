@@ -5,16 +5,15 @@ from app.core.config import settings
 
 
 engine = create_engine(
-    settings.DATABASE_URL
+    settings.DATABASE_URL,
+    pool_pre_ping=True,
 )
-
 
 SessionLocal = sessionmaker(
     autocommit=False,
     autoflush=False,
-    bind=engine
+    bind=engine,
 )
-
 
 Base = declarative_base()
 
@@ -24,6 +23,11 @@ def get_db():
 
     try:
         yield db
+
+    except Exception:
+        db.rollback()
+        raise
+
     finally:
         db.close()
 

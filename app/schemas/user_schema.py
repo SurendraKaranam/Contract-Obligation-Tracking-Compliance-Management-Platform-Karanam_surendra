@@ -1,11 +1,30 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
-class User(BaseModel):
+
+class UserBase(BaseModel):
+    full_name: str
+    email: EmailStr
+    role: str
+    is_active: bool = True
+
+
+class UserCreate(UserBase):
+    password: str
+
+
+class UserUpdate(BaseModel):
+    full_name: str
+    email: EmailStr
+    role: str
+    is_active: bool = True
+
+
+class PasswordChange(BaseModel):
+    password: str
+
+
+class UserResponse(UserBase):
     id: int
-    name: str
-    email: str
-<<<<<<< HEAD
-    role: str
-=======
-    role: str
->>>>>>> cb87ace116b09ed98d5d64392b80a596edfa80ce
+
+    class Config:
+        from_attributes = True
