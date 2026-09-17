@@ -1,21 +1,23 @@
-from app.database.database import engine
-from sqlalchemy import text
+from app.database.database import SessionLocal
+from app.models import User
 
-with engine.connect() as c:
-    print("========== RENDER DATABASE CHECK ==========")
-    print("USERS:", c.execute(text("SELECT to_regclass('public.users')")).scalar())
-    print("CONTRACTS:", c.execute(text("SELECT to_regclass('public.contracts')")).scalar())
-    print("ALEMBIC:", c.execute(text("SELECT to_regclass('public.alembic_version')")).scalar())
+db = SessionLocal()
 
-    version_table = c.execute(
-        text("SELECT to_regclass('public.alembic_version')")
-    ).scalar()
+try:
+    users = db.query(User).all()
 
-    if version_table:
-        print("ALEMBIC VERSION:", c.execute(
-            text("SELECT version_num FROM alembic_version")
-        ).fetchall())
-    else:
-        print("ALEMBIC VERSION: TABLE DOES NOT EXIST")
+    print("========== RENDER USERS ==========")
 
-    print("===========================================")
+    for user in users:
+        print(
+            "ID:", user.id,
+            "| EMAIL:", user.email,
+            "| ROLE:", user.role,
+            "| ACTIVE:", user.is_active
+        )
+
+    print("TOTAL USERS:", len(users))
+    print("==================================")
+
+finally:
+    db.close()
